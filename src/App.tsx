@@ -1,8 +1,10 @@
+// R > App.tsx
 import { useState } from "react";
 import { Container, Box, Typography, Button, Stack } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import dayjs from "dayjs";
 import { useTasks } from "./hooks/useTasks";
+import { useAlarmTitle } from "./hooks/useDocumentTitle";
 import AddTaskModal from "./components/AddTaskModal";
 import RingtoneModal from "./components/RingtoneModal";
 import TaskList from "./components/TaskList";
@@ -11,6 +13,8 @@ export default function App() {
   const { visibleTasks, now, ringtone, setRingtone, addTask, removeTask, stopTask, snoozeTask, hideTask } = useTasks();
   const [addOpen, setAddOpen] = useState(false);
   const [ringtoneOpen, setRingtoneOpen] = useState(false);
+
+  useAlarmTitle(visibleTasks, now);
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default", py: 6 }}>
