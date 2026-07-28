@@ -35,6 +35,26 @@ const theme = createTheme({
         },
       },
     },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          backgroundColor: "#2a2c2e", // gris un poco más claro que el paper (#1f2123)
+          borderRadius: 12,
+          "& fieldset": {
+            borderColor: "#3a3d3f",
+          },
+          "&:hover:not(.Mui-disabled) fieldset": {
+            borderColor: "#555",
+          },
+          "&.Mui-focused fieldset": {
+            borderColor: "#8ab4f8", // tu color primary
+          },
+        },
+        input: {
+          // por si querés ajustar padding o algo puntual del input
+        },
+      },
+    },
   },
 });
 
