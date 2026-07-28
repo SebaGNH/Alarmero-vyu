@@ -1,9 +1,10 @@
-import { Paper, Stack, Typography, IconButton, Chip, Tooltip } from '@mui/material';
-import AddAlarmIcon from '@mui/icons-material/AddAlarm';
-import StopCircleIcon from '@mui/icons-material/StopCircle';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import AlarmIcon from '@mui/icons-material/Alarm';
-import type { Task } from '../types';
+import { useState } from "react";
+import { Paper, Stack, Typography, IconButton, Chip, Tooltip } from "@mui/material";
+import AddAlarmIcon from "@mui/icons-material/AddAlarm";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import AlarmIcon from "@mui/icons-material/Alarm";
+import type { Task } from "../types";
+import StoppedTaskModal from "./Stoppedtaskmodal";
 
 interface Props {
   task: Task;
@@ -11,10 +12,11 @@ interface Props {
   onSnooze: (id: string, minutes: number) => void;
   onStop: (id: string) => void;
   onDelete: (id: string) => void;
+  onHide: (id: string) => void;
 }
 
 function formatRemaining(ms: number): string {
-  if (ms <= 0) return '¡Ahora!';
+  if (ms <= 0) return "¡Ahora!";
   const totalSeconds = Math.floor(ms / 1000);
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
@@ -24,20 +26,29 @@ function formatRemaining(ms: number): string {
   return `${s}s`;
 }
 
-export default function TaskItem({ task, now, onSnooze, onStop, onDelete }: Props) {
+export default function TaskItem({ task, now, onSnooze, onStop, onDelete, onHide }: Props) {
+  const [stoppedModalOpen, setStoppedModalOpen] = useState(false);
   const remainingMs = new Date(task.triggerAt).getTime() - now;
   const isDone = task.stopped;
   const isRinging = task.isRinging && !task.stopped;
+
+  const handleChipClick = () => {
+    if (isDone) {
+      setStoppedModalOpen(true);
+    } else {
+      onStop(task.id);
+    }
+  };
 
   return (
     <Paper
       elevation={isRinging ? 6 : 1}
       sx={{
         p: 2,
-        borderRadius: 3,
-        borderLeft: isRinging ? '5px solid #f44336' : '5px solid transparent',
+        borderRadius: 1,
+        borderLeft: isRinging ? "5px solid #ee5f5b" : "5px solid transparent",
         opacity: isDone ? 0.5 : 1,
-        transition: 'all 0.2s ease',
+        transition: "all 0.2s ease",
       }}
     >
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
@@ -46,7 +57,7 @@ export default function TaskItem({ task, now, onSnooze, onStop, onDelete }: Prop
             {task.title}
           </Typography>
           {task.description && (
-            <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
               {task.description}
             </Typography>
           )}
@@ -56,19 +67,23 @@ export default function TaskItem({ task, now, onSnooze, onStop, onDelete }: Prop
         </Stack>
 
         <Stack alignItems="center" spacing={1}>
-          <Chip
-            icon={<AlarmIcon />}
-            label={isDone ? 'Detenida' : formatRemaining(remainingMs)}
-            color={isRinging ? 'error' : isDone ? 'default' : 'primary'}
-            variant={isRinging ? 'filled' : 'outlined'}
-          />
+          <Tooltip title={isDone ? "Ver opciones" : "Detener / pausar alarma"}>
+            <Chip
+              icon={<AlarmIcon />}
+              label={isDone ? "Detenida" : formatRemaining(remainingMs)}
+              color={isRinging ? "error" : isDone ? "default" : "primary"}
+              variant={isRinging ? "filled" : "outlined"}
+              onClick={handleChipClick}
+              sx={{ cursor: "pointer" }}
+            />
+          </Tooltip>
           <Stack direction="row" spacing={0.5}>
             <Tooltip title="Sumar 1 minuto">
               <span>
                 <IconButton size="small" onClick={() => onSnooze(task.id, 1)} disabled={isDone}>
                   <AddAlarmIcon fontSize="small" />
                   <Typography variant="caption" sx={{ ml: 0.2 }}>
-                    1
+                    + 1
                   </Typography>
                 </IconButton>
               </span>
@@ -78,15 +93,8 @@ export default function TaskItem({ task, now, onSnooze, onStop, onDelete }: Prop
                 <IconButton size="small" onClick={() => onSnooze(task.id, 10)} disabled={isDone}>
                   <AddAlarmIcon fontSize="small" />
                   <Typography variant="caption" sx={{ ml: 0.2 }}>
-                    10
+                    +10
                   </Typography>
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Detener alarma">
-              <span>
-                <IconButton size="small" color="error" onClick={() => onStop(task.id)} disabled={isDone}>
-                  <StopCircleIcon fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
@@ -98,6 +106,20 @@ export default function TaskItem({ task, now, onSnooze, onStop, onDelete }: Prop
           </Stack>
         </Stack>
       </Stack>
+
+      <StoppedTaskModal
+        open={stoppedModalOpen}
+        taskTitle={task.title}
+        onClose={() => setStoppedModalOpen(false)}
+        onHide={() => {
+          onHide(task.id);
+          setStoppedModalOpen(false);
+        }}
+        onDelete={() => {
+          onDelete(task.id);
+          setStoppedModalOpen(false);
+        }}
+      />
     </Paper>
   );
 }

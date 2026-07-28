@@ -1,6 +1,6 @@
-import { Stack, Typography } from '@mui/material';
-import type { Task } from '../types';
-import TaskItem from './TaskItem';
+import { Stack, Typography } from "@mui/material";
+import type { Task } from "../types";
+import TaskItem from "./TaskItem";
 
 interface Props {
   tasks: Task[];
@@ -8,9 +8,10 @@ interface Props {
   onSnooze: (id: string, minutes: number) => void;
   onStop: (id: string) => void;
   onDelete: (id: string) => void;
+  onHide: (id: string) => void;
 }
 
-export default function TaskList({ tasks, now, onSnooze, onStop, onDelete }: Props) {
+export default function TaskList({ tasks, now, onSnooze, onStop, onDelete, onHide }: Props) {
   if (tasks.length === 0) {
     return (
       <Typography align="center" color="text.secondary" sx={{ mt: 6 }}>
@@ -19,14 +20,12 @@ export default function TaskList({ tasks, now, onSnooze, onStop, onDelete }: Pro
     );
   }
 
-  const sorted = [...tasks].sort(
-    (a, b) => new Date(a.triggerAt).getTime() - new Date(b.triggerAt).getTime()
-  );
+  const sorted = [...tasks].sort((a, b) => new Date(a.triggerAt).getTime() - new Date(b.triggerAt).getTime());
 
   return (
     <Stack spacing={2} sx={{ mt: 3 }}>
       {sorted.map((task) => (
-        <TaskItem key={task.id} task={task} now={now} onSnooze={onSnooze} onStop={onStop} onDelete={onDelete} />
+        <TaskItem key={task.id} task={task} now={now} onSnooze={onSnooze} onStop={onStop} onDelete={onDelete} onHide={onHide} />
       ))}
     </Stack>
   );

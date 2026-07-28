@@ -1,19 +1,9 @@
-import { useEffect, useState } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-  Stack,
-  Typography,
-  IconButton,
-} from '@mui/material';
-import MusicNoteIcon from '@mui/icons-material/MusicNote';
-import CloseIcon from '@mui/icons-material/Close';
-import dayjs, { Dayjs } from 'dayjs';
-import type { Task, RingtoneConfig } from '../types';
+import { useEffect, useState } from "react";
+import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Stack, Typography, IconButton } from "@mui/material";
+import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import CloseIcon from "@mui/icons-material/Close";
+import dayjs, { Dayjs } from "dayjs";
+import type { Task, RingtoneConfig } from "../types";
 
 interface Props {
   open: boolean;
@@ -24,22 +14,22 @@ interface Props {
 }
 
 function defaultTriggerTime(): Dayjs {
-  return dayjs().add(10, 'minute');
+  return dayjs().add(10, "minute");
 }
 
 export default function AddTaskModal({ open, onClose, onSave, ringtone, onChangeRingtone }: Props) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState(dayjs().format('YYYY-MM-DD'));
-  const [time, setTime] = useState(defaultTriggerTime().format('HH:mm'));
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState(dayjs().format("YYYY-MM-DD"));
+  const [time, setTime] = useState(defaultTriggerTime().format("HH:mm"));
 
   useEffect(() => {
     if (open) {
       const def = defaultTriggerTime();
-      setTitle('');
-      setDescription('');
-      setDate(def.format('YYYY-MM-DD'));
-      setTime(def.format('HH:mm'));
+      setTitle("");
+      setDescription("");
+      setDate(def.format("YYYY-MM-DD"));
+      setTime(def.format("HH:mm"));
     }
   }, [open]);
 
@@ -54,6 +44,7 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
       ringtonePath: ringtone.path,
       stopped: false,
       isRinging: false,
+      hidden: false,
       createdAt: new Date().toISOString(),
     };
     onSave(task);
@@ -62,7 +53,7 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         Nueva alarma
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
@@ -70,13 +61,7 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <TextField
-            label="Título"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            fullWidth
-            autoFocus
-          />
+          <TextField label="Título" value={title} onChange={(e) => setTitle(e.target.value)} fullWidth autoFocus />
           <TextField
             label="Descripción"
             value={description}

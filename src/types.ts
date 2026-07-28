@@ -9,6 +9,8 @@ export interface Task {
   stopped: boolean;
   /** true mientras está sonando activamente */
   isRinging: boolean;
+  /** true si el usuario decidió ocultarla de la lista principal */
+  hidden: boolean;
   createdAt: string;
 }
 

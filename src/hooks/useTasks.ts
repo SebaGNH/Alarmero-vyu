@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Task, RingtoneConfig } from '../types';
-import { loadTasks, saveTasks, loadRingtone, saveRingtone } from '../utils/storage';
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Task, RingtoneConfig } from "../types";
+import { loadTasks, saveTasks, loadRingtone, saveRingtone } from "../utils/storage";
 
 const LOOP_INTERVAL_MS = 1500; // cada cuánto se reinicia el sonido mientras suena
 
@@ -63,11 +63,11 @@ export function useTasks() {
       }
 
       // Notificación del navegador si la pestaña no está en foco
-      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-        new Notification('⏰ Alarmero', { body: task.title || 'Tenés una tarea pendiente' });
+      if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+        new Notification("⏰ Alarmero", { body: task.title || "Tenés una tarea pendiente" });
       }
     },
-    [ringtone.path]
+    [ringtone.path],
   );
 
   // Chequeo de disparo de alarmas
@@ -90,7 +90,7 @@ export function useTasks() {
   }, [now]);
 
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
+    if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
   }, []);
@@ -104,7 +104,7 @@ export function useTasks() {
       stopAudioFor(id);
       setTasks((prev) => prev.filter((t) => t.id !== id));
     },
-    [stopAudioFor]
+    [stopAudioFor],
   );
 
   const stopTask = useCallback(
@@ -112,7 +112,7 @@ export function useTasks() {
       stopAudioFor(id);
       setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, stopped: true, isRinging: false } : t)));
     },
-    [stopAudioFor]
+    [stopAudioFor],
   );
 
   const snoozeTask = useCallback(
@@ -124,14 +124,27 @@ export function useTasks() {
           const base = t.isRinging ? Date.now() : new Date(t.triggerAt).getTime();
           const newTrigger = new Date(base + minutes * 60_000).toISOString();
           return { ...t, triggerAt: newTrigger, isRinging: false, stopped: false };
-        })
+        }),
       );
     },
-    [stopAudioFor]
+    [stopAudioFor],
   );
+
+  const hideTask = useCallback((id: string) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, hidden: true } : t)));
+  }, []);
+
+  const unhideTask = useCallback((id: string) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, hidden: false } : t)));
+  }, []);
+
+  const visibleTasks = tasks.filter((t) => !t.hidden);
+  const hiddenTasks = tasks.filter((t) => t.hidden);
 
   return {
     tasks,
+    visibleTasks,
+    hiddenTasks,
     now,
     ringtone,
     setRingtone,
@@ -139,5 +152,7 @@ export function useTasks() {
     removeTask,
     stopTask,
     snoozeTask,
+    hideTask,
+    unhideTask,
   };
 }
