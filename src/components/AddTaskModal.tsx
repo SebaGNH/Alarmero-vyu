@@ -1,5 +1,6 @@
+// R > src/components/AddTaskModal.tsx
 import { useEffect, useRef, useState } from "react";
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Stack, IconButton } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Stack, IconButton, Chip, Typography } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import SaveIcon from "@mui/icons-material/Save";
 import dayjs, { Dayjs } from "dayjs";
@@ -13,18 +14,20 @@ interface Props {
   onChangeRingtone: () => void;
 }
 
-// 🎨 Color de fondo de todos los inputs del modal. Cambialo acá y se aplica a todos.
-const INPUT_BG_COLOR = "#3d3f42";
+const QUICK_PRESETS = [1, 2, 3, 5, 15];
 
 function defaultTriggerTime(): Dayjs {
-  return dayjs().add(10, "minute");
+  const now = dayjs();
+  const extraMinute = now.second() >= 30 ? 1 : 0;
+  return now.add(1 + extraMinute, "minute");
 }
 
-export default function AddTaskModal({ open, onClose, onSave, ringtone, onChangeRingtone }: Props) {
+export default function AddTaskModal({ open, onClose, onSave, ringtone }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [time, setTime] = useState(defaultTriggerTime().format("HH:mm"));
+  const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const timeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -34,8 +37,21 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
       setDescription("");
       setDate(def.format("YYYY-MM-DD"));
       setTime(def.format("HH:mm"));
+      setSelectedPreset(null);
     }
   }, [open]);
+
+  const handleQuickSet = (minutes: number) => {
+    const now = dayjs();
+    // Compensamos el truncado de segundos del input HH:mm, para que el tiempo
+    // real hasta la alarma sea al menos "minutes" minutos completos.
+    const extraMinute = now.second() >= 30 ? 1 : 0;
+    const target = now.add(minutes + extraMinute, "minute");
+    setDate(target.format("YYYY-MM-DD"));
+    setTime(target.format("HH:mm"));
+    setSelectedPreset(minutes);
+    setTitle(`${minutes} minuto${minutes === 1 ? "" : "s"}`);
+  };
 
   const handleSave = () => {
     if (!title.trim()) return;
@@ -55,7 +71,6 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
     onClose();
   };
 
-  // Posiciona el cursor en el segmento de minutos del input de hora (HH:mm -> índices 3-5)
   const selectMinutesSegment = () => {
     const input = timeInputRef.current;
     if (input) {
@@ -63,24 +78,48 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
     }
   };
 
-  // sx reutilizable para no repetirlo 4 veces
   const inputBgSx = {
     "& .MuiOutlinedInput-root": {
-      backgroundColor: INPUT_BG_COLOR,
+      backgroundColor: "#3d3f42",
     },
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        Nueva alarma
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+        <Typography variant="h6" component="span">
+          Nueva alarma
+        </Typography>
+        <Stack direction="row" spacing={0.75} sx={{ flex: 1, justifyContent: "flex-end" }}>
+          {QUICK_PRESETS.map((minutes) => (
+            <Chip
+              key={minutes}
+              label={`${minutes}m`}
+              size="small"
+              clickable
+              color={selectedPreset === minutes ? "primary" : "default"}
+              variant={selectedPreset === minutes ? "filled" : "outlined"}
+              onClick={() => handleQuickSet(minutes)}
+            />
+          ))}
+        </Stack>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <TextField label="Título" value={title} onChange={(e) => setTitle(e.target.value)} fullWidth autoFocus sx={inputBgSx} />
+          <TextField
+            label="Título"
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setSelectedPreset(null);
+            }}
+            fullWidth
+            autoFocus
+            sx={inputBgSx}
+          />
           <TextField
             label="Descripción"
             value={description}
@@ -95,7 +134,10 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
               label="Fecha"
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => {
+                setDate(e.target.value);
+                setSelectedPreset(null);
+              }}
               fullWidth
               InputLabelProps={{ shrink: true }}
               sx={{
@@ -110,7 +152,10 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
               label="Hora"
               type="time"
               value={time}
-              onChange={(e) => setTime(e.target.value)}
+              onChange={(e) => {
+                setTime(e.target.value);
+                setSelectedPreset(null);
+              }}
               onClick={selectMinutesSegment}
               onFocus={selectMinutesSegment}
               fullWidth
@@ -125,23 +170,12 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone, onChange
               }}
             />
           </Stack>
-          {/*      <Stack direction="row" alignItems="center" spacing={1}>
-            <IconButton onClick={onChangeRingtone} color="primary">
-              <MusicNoteIcon />
-            </IconButton>
-            <Typography variant="body2" color="text.secondary">
-              Tono: {ringtone.name}
-            </Typography>
-          </Stack> */}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button variant="contained" onClick={handleSave} disabled={!title.trim()} startIcon={<SaveIcon />}>
           Guardar
         </Button>
-        {/*       <Button variant="outlined" onClick={onClose}>
-          Cancelar
-        </Button> */}
       </DialogActions>
     </Dialog>
   );

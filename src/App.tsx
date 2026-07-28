@@ -27,9 +27,9 @@ export default function App() {
             Agregar
           </Button>
         </Stack>
-        <Typography variant="body2" color="text.secondary">
+        {/*        <Typography variant="body2" color="text.secondary">
           Tus recordatorios, siempre a mano.
-        </Typography>
+        </Typography> */}
 
         <TaskList tasks={visibleTasks} now={now} onSnooze={snoozeTask} onStop={stopTask} onDelete={removeTask} onHide={hideTask} />
       </Container>
