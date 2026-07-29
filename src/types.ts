@@ -1,8 +1,13 @@
+// R > src/types.ts
+export type TaskType = "alarm" | "note";
+
 export interface Task {
   id: string;
+  /** "alarm": tiene hora de disparo y suena. "note": solo título/descripción, sin tiempo. */
+  type: TaskType;
   title: string;
   description: string;
-  /** ISO string con fecha + hora del disparo de la alarma */
+  /** ISO string con fecha + hora del disparo (para notas, se usa createdAt sin efecto real) */
   triggerAt: string;
   ringtonePath: string;
   /** true si el usuario la detuvo (no debe volver a sonar) */
@@ -11,12 +16,7 @@ export interface Task {
   isRinging: boolean;
   /** true si el usuario decidió ocultarla de la lista principal */
   hidden: boolean;
+  /** solo aplica a notas: marcada como completada */
+  completed: boolean;
   createdAt: string;
-}
-
-export interface RingtoneConfig {
-  /** ruta relativa dentro de /public/sounds o nombre de archivo */
-  path: string;
-  /** nombre visible para el usuario */
-  name: string;
 }

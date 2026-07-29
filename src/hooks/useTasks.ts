@@ -1,7 +1,9 @@
+// R > src/hooks/useTasks.ts
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Task, RingtoneConfig } from "../types";
-import { loadTasks, saveTasks, loadRingtone, saveRingtone } from "../utils/storage";
+import type { Task } from "../types";
+import { loadTasks, saveTasks } from "../utils/storage";
 import { resolveSoundPath } from "../utils/assetPath";
+import { DEFAULT_RINGTONE_PATH } from "../constants";
 
 const PAUSE_BETWEEN_ROUNDS_MS = 10_000; // pausa entre "rondas" de beeps
 
@@ -11,7 +13,6 @@ interface RingController {
 
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>(() => loadTasks());
-  const [ringtone, setRingtoneState] = useState<RingtoneConfig>(() => loadRingtone());
   const [now, setNow] = useState<number>(Date.now());
 
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
@@ -27,13 +28,7 @@ export function useTasks() {
     saveTasks(tasks);
   }, [tasks]);
 
-  const setRingtone = useCallback((config: RingtoneConfig) => {
-    setRingtoneState(config);
-    saveRingtone(config);
-  }, []);
-
   const stopAudioFor = useCallback((taskId: string) => {
-    // cancelamos cualquier secuencia de beeps en curso
     const controller = controllersRef.current[taskId];
     if (controller) {
       controller.cancelled = true;
@@ -54,8 +49,6 @@ export function useTasks() {
     }
   }, []);
 
-  // Reproduce `roundNumber` beeps seguidos y, al terminar, espera 10s
-  // y arranca la siguiente ronda con roundNumber + 1 beeps.
   const playRound = useCallback((taskId: string, path: string, roundNumber: number, controller: RingController) => {
     if (controller.cancelled) return;
 
@@ -71,7 +64,6 @@ export function useTasks() {
       if (controller.cancelled) return;
 
       if (beepsLeft <= 0) {
-        // ronda terminada, esperar y pasar a la siguiente
         const timeoutId = window.setTimeout(() => {
           if (controller.cancelled) return;
           playRound(taskId, path, roundNumber + 1, controller);
@@ -83,7 +75,6 @@ export function useTasks() {
       beepsLeft -= 1;
       audio.currentTime = 0;
       audio.play().catch(() => {
-        // si el navegador bloquea el play, igual seguimos la cadena
         playNextBeep();
       });
     };
@@ -94,7 +85,7 @@ export function useTasks() {
 
   const playAlarmFor = useCallback(
     (task: Task) => {
-      const path = resolveSoundPath(task.ringtonePath || ringtone.path);
+      const path = resolveSoundPath(task.ringtonePath || DEFAULT_RINGTONE_PATH);
       const controller: RingController = { cancelled: false };
       controllersRef.current[task.id] = controller;
 
@@ -104,14 +95,15 @@ export function useTasks() {
         new Notification("⏰ Alarmero", { body: task.title || "Tenés una tarea pendiente" });
       }
     },
-    [ringtone.path, playRound],
+    [playRound],
   );
 
+  // Solo las tareas de tipo "alarm" disparan sonido; las notas nunca entran acá.
   useEffect(() => {
     setTasks((prev) => {
       let changed = false;
       const updated = prev.map((t) => {
-        if (t.stopped) return t;
+        if (t.type !== "alarm" || t.stopped) return t;
         const triggerTime = new Date(t.triggerAt).getTime();
         if (!t.isRinging && triggerTime <= now) {
           changed = true;
@@ -133,6 +125,10 @@ export function useTasks() {
 
   const addTask = useCallback((task: Task) => {
     setTasks((prev) => [...prev, task]);
+  }, []);
+
+  const updateTask = useCallback((updated: Task) => {
+    setTasks((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
   }, []);
 
   const removeTask = useCallback(
@@ -166,6 +162,11 @@ export function useTasks() {
     [stopAudioFor],
   );
 
+  // Solo aplica a notas: alterna el checkbox de completada.
+  const toggleComplete = useCallback((id: string) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+  }, []);
+
   const hideTask = useCallback((id: string) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, hidden: true } : t)));
   }, []);
@@ -182,12 +183,12 @@ export function useTasks() {
     visibleTasks,
     hiddenTasks,
     now,
-    ringtone,
-    setRingtone,
     addTask,
+    updateTask,
     removeTask,
     stopTask,
     snoozeTask,
+    toggleComplete,
     hideTask,
     unhideTask,
   };

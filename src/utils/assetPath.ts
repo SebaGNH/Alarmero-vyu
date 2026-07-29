@@ -1,3 +1,4 @@
+// R > src/utils/assetPath.ts
 export function resolveSoundPath(path: string): string {
   // Si ya viene con el base incluido o es una URL completa, no tocar
   if (path.startsWith("http")) return path;

@@ -1,17 +1,31 @@
 // R > src/components/AddTaskModal.tsx
 import { useEffect, useRef, useState } from "react";
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Stack, IconButton, Chip, Typography } from "@mui/material";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Button,
+  Stack,
+  IconButton,
+  Chip,
+  ToggleButtonGroup,
+  ToggleButton,
+} from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import SaveIcon from "@mui/icons-material/Save";
 import dayjs, { Dayjs } from "dayjs";
-import type { Task, RingtoneConfig } from "../types";
+import type { Task, TaskType } from "../types";
+import { DEFAULT_RINGTONE_PATH } from "../constants";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSave: (task: Task) => void;
-  ringtone: RingtoneConfig;
-  onChangeRingtone: () => void;
+  onUpdate: (task: Task) => void;
+  /** Si viene con valor, el modal entra en modo edición precargando estos datos */
+  editingTask?: Task | null;
 }
 
 const QUICK_PRESETS = [1, 2, 3, 5, 15];
@@ -22,7 +36,8 @@ function defaultTriggerTime(): Dayjs {
   return now.add(1 + extraMinute, "minute");
 }
 
-export default function AddTaskModal({ open, onClose, onSave, ringtone }: Props) {
+export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingTask }: Props) {
+  const [type, setType] = useState<TaskType>("alarm");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(dayjs().format("YYYY-MM-DD"));
@@ -30,21 +45,34 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone }: Props)
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const timeInputRef = useRef<HTMLInputElement>(null);
 
+  const isEditing = Boolean(editingTask);
+
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+
+    if (editingTask) {
+      // Modo edición: precargamos todo desde la tarea existente
+      const trigger = dayjs(editingTask.triggerAt);
+      setType(editingTask.type);
+      setTitle(editingTask.title);
+      setDescription(editingTask.description);
+      setDate(trigger.format("YYYY-MM-DD"));
+      setTime(trigger.format("HH:mm"));
+      setSelectedPreset(null);
+    } else {
+      // Modo creación: valores por defecto
       const def = defaultTriggerTime();
+      setType("alarm");
       setTitle("");
       setDescription("");
       setDate(def.format("YYYY-MM-DD"));
       setTime(def.format("HH:mm"));
       setSelectedPreset(null);
     }
-  }, [open]);
+  }, [open, editingTask]);
 
   const handleQuickSet = (minutes: number) => {
     const now = dayjs();
-    // Compensamos el truncado de segundos del input HH:mm, para que el tiempo
-    // real hasta la alarma sea al menos "minutes" minutos completos.
     const extraMinute = now.second() >= 30 ? 1 : 0;
     const target = now.add(minutes + extraMinute, "minute");
     setDate(target.format("YYYY-MM-DD"));
@@ -53,21 +81,44 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone }: Props)
     setTitle(`${minutes} minuto${minutes === 1 ? "" : "s"}`);
   };
 
+  const handleTypeChange = (_: unknown, newType: TaskType | null) => {
+    if (newType) {
+      setType(newType);
+      setSelectedPreset(null);
+    }
+  };
+
   const handleSave = () => {
     if (!title.trim()) return;
-    const triggerAt = dayjs(`${date}T${time}`).toISOString();
-    const task: Task = {
-      id: crypto.randomUUID(),
-      title: title.trim(),
-      description: description.trim(),
-      triggerAt,
-      ringtonePath: ringtone.path,
-      stopped: false,
-      isRinging: false,
-      hidden: false,
-      createdAt: new Date().toISOString(),
-    };
-    onSave(task);
+
+    // Para notas, el tiempo no tiene efecto real: usamos el momento actual como referencia.
+    const triggerAt = type === "note" ? new Date().toISOString() : dayjs(`${date}T${time}`).toISOString();
+
+    if (isEditing && editingTask) {
+      const updated: Task = {
+        ...editingTask,
+        type,
+        title: title.trim(),
+        description: description.trim(),
+        triggerAt,
+      };
+      onUpdate(updated);
+    } else {
+      const task: Task = {
+        id: crypto.randomUUID(),
+        type,
+        title: title.trim(),
+        description: description.trim(),
+        triggerAt,
+        ringtonePath: DEFAULT_RINGTONE_PATH,
+        stopped: false,
+        isRinging: false,
+        hidden: false,
+        completed: false,
+        createdAt: new Date().toISOString(),
+      };
+      onSave(task);
+    }
     onClose();
   };
 
@@ -84,25 +135,32 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone }: Props)
     },
   };
 
+  const isNote = type === "note";
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-        <Typography variant="h6" component="span">
-          Nueva alarma
-        </Typography>
-        <Stack direction="row" spacing={0.75} sx={{ flex: 1, justifyContent: "flex-end" }}>
-          {QUICK_PRESETS.map((minutes) => (
-            <Chip
-              key={minutes}
-              label={`${minutes}m`}
-              size="small"
-              clickable
-              color={selectedPreset === minutes ? "primary" : "default"}
-              variant={selectedPreset === minutes ? "filled" : "outlined"}
-              onClick={() => handleQuickSet(minutes)}
-            />
-          ))}
-        </Stack>
+        <ToggleButtonGroup value={type} exclusive onChange={handleTypeChange} size="small" disabled={isEditing}>
+          <ToggleButton value="alarm">Nueva alarma</ToggleButton>
+          <ToggleButton value="note">Tareas</ToggleButton>
+        </ToggleButtonGroup>
+
+        {!isNote && (
+          <Stack direction="row" spacing={0.75} sx={{ flex: 1, justifyContent: "flex-end" }}>
+            {QUICK_PRESETS.map((minutes) => (
+              <Chip
+                key={minutes}
+                label={`${minutes}m`}
+                size="small"
+                clickable
+                color={selectedPreset === minutes ? "primary" : "default"}
+                variant={selectedPreset === minutes ? "filled" : "outlined"}
+                onClick={() => handleQuickSet(minutes)}
+              />
+            ))}
+          </Stack>
+        )}
+
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
@@ -129,47 +187,50 @@ export default function AddTaskModal({ open, onClose, onSave, ringtone }: Props)
             minRows={3}
             sx={inputBgSx}
           />
-          <Stack direction="row" spacing={2}>
-            <TextField
-              label="Fecha"
-              type="date"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setSelectedPreset(null);
-              }}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              sx={{
-                ...inputBgSx,
-                "& input::-webkit-calendar-picker-indicator": {
-                  filter: "invert(1) brightness(1.5)",
-                  cursor: "pointer",
-                },
-              }}
-            />
-            <TextField
-              label="Hora"
-              type="time"
-              value={time}
-              onChange={(e) => {
-                setTime(e.target.value);
-                setSelectedPreset(null);
-              }}
-              onClick={selectMinutesSegment}
-              onFocus={selectMinutesSegment}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              inputRef={timeInputRef}
-              sx={{
-                ...inputBgSx,
-                "& input::-webkit-calendar-picker-indicator": {
-                  filter: "invert(1) brightness(1.5)",
-                  cursor: "pointer",
-                },
-              }}
-            />
-          </Stack>
+
+          {!isNote && (
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Fecha"
+                type="date"
+                value={date}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  setSelectedPreset(null);
+                }}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                sx={{
+                  ...inputBgSx,
+                  "& input::-webkit-calendar-picker-indicator": {
+                    filter: "invert(1) brightness(1.5)",
+                    cursor: "pointer",
+                  },
+                }}
+              />
+              <TextField
+                label="Hora"
+                type="time"
+                value={time}
+                onChange={(e) => {
+                  setTime(e.target.value);
+                  setSelectedPreset(null);
+                }}
+                onClick={selectMinutesSegment}
+                onFocus={selectMinutesSegment}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                inputRef={timeInputRef}
+                sx={{
+                  ...inputBgSx,
+                  "& input::-webkit-calendar-picker-indicator": {
+                    filter: "invert(1) brightness(1.5)",
+                    cursor: "pointer",
+                  },
+                }}
+              />
+            </Stack>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>

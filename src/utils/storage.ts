@@ -1,12 +1,7 @@
-import type { Task, RingtoneConfig } from '../types';
+// R > src/utils/storage.ts
+import type { Task } from "../types";
 
-const TASKS_KEY = 'alarmero_tasks';
-const RINGTONE_KEY = 'alarmero_ringtone';
-
-export const DEFAULT_RINGTONE: RingtoneConfig = {
-  path: '/sounds/default.mp3',
-  name: 'Tono por defecto',
-};
+const TASKS_KEY = "alarmero_tasks";
 
 export function loadTasks(): Task[] {
   try {
@@ -20,18 +15,4 @@ export function loadTasks(): Task[] {
 
 export function saveTasks(tasks: Task[]): void {
   localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
-}
-
-export function loadRingtone(): RingtoneConfig {
-  try {
-    const raw = localStorage.getItem(RINGTONE_KEY);
-    if (!raw) return DEFAULT_RINGTONE;
-    return JSON.parse(raw) as RingtoneConfig;
-  } catch {
-    return DEFAULT_RINGTONE;
-  }
-}
-
-export function saveRingtone(config: RingtoneConfig): void {
-  localStorage.setItem(RINGTONE_KEY, JSON.stringify(config));
 }
