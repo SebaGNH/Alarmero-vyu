@@ -115,13 +115,12 @@ export default function TaskItem({ task, now, onSnooze, onStop, onDelete, onEdit
                 </Tooltip>
               </>
             )}
-            {isNote && (
-              <Tooltip title="Editar">
-                <IconButton size="small" onClick={() => onEdit(task)}>
-                  <EditOutlinedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
+            <Tooltip title="Editar">
+              <IconButton size="small" onClick={() => onEdit(task)}>
+                <EditOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+
             <Tooltip title="Eliminar">
               <IconButton size="small" onClick={() => onDelete(task.id)}>
                 <DeleteOutlineIcon fontSize="small" />

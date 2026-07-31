@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import type { Task } from "../types";
 
 const APP_NAME = "Alarmero";
-const THRESHOLD_HOURS = 10;
+const THRESHOLD_HOURS = 1;
 
 function formatCountdown(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));

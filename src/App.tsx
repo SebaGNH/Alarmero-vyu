@@ -4,12 +4,14 @@ import { Container, Box, Typography, Button, Stack } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import dayjs from "dayjs";
 import { useTasks } from "./hooks/useTasks";
+import { useAlarmTitle } from "./hooks/useDocumentTitle";
 import AddTaskModal from "./components/AddTaskModal";
 import TaskList from "./components/TaskList";
 import type { Task } from "./types";
 
 export default function App() {
   const { visibleTasks, now, addTask, updateTask, removeTask, stopTask, snoozeTask, toggleComplete } = useTasks();
+  useAlarmTitle(visibleTasks, now);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
