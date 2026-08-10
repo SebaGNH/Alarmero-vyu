@@ -1,11 +1,13 @@
 // R > src/hooks/useTasks.ts
 import { useCallback, useEffect, useRef, useState } from "react";
+import dayjs from "dayjs";
 import type { Task } from "../types";
 import { loadTasks, saveTasks } from "../utils/storage";
 import { resolveSoundPath } from "../utils/assetPath";
 import { DEFAULT_RINGTONE_PATH } from "../constants";
+import { computeNextRecurringTrigger } from "../utils/recurrence";
 
-const PAUSE_BETWEEN_ROUNDS_MS = 10_000; // pausa entre "rondas" de beeps
+const PAUSE_BETWEEN_ROUNDS_MS = 10_000;
 
 interface RingController {
   cancelled: boolean;
@@ -49,39 +51,48 @@ export function useTasks() {
     }
   }, []);
 
-  const playRound = useCallback((taskId: string, path: string, roundNumber: number, controller: RingController) => {
-    if (controller.cancelled) return;
-
-    if (!audioRefs.current[taskId]) {
-      audioRefs.current[taskId] = new Audio(path);
-    }
-    const audio = audioRefs.current[taskId];
-    audio.src = path;
-
-    let beepsLeft = roundNumber;
-
-    const playNextBeep = () => {
-      if (controller.cancelled) return;
-
-      if (beepsLeft <= 0) {
-        const timeoutId = window.setTimeout(() => {
-          if (controller.cancelled) return;
-          playRound(taskId, path, roundNumber + 1, controller);
-        }, PAUSE_BETWEEN_ROUNDS_MS);
-        timeoutRefs.current[taskId] = timeoutId;
-        return;
-      }
-
-      beepsLeft -= 1;
-      audio.currentTime = 0;
-      audio.play().catch(() => {
-        playNextBeep();
-      });
-    };
-
-    audio.onended = playNextBeep;
-    playNextBeep();
+  const isControllerActive = useCallback((taskId: string, controller: RingController) => {
+    return !controller.cancelled && controllersRef.current[taskId] === controller;
   }, []);
+
+  const playRound = useCallback(
+    (taskId: string, path: string, roundNumber: number, controller: RingController) => {
+      if (!isControllerActive(taskId, controller)) return;
+
+      if (!audioRefs.current[taskId]) {
+        audioRefs.current[taskId] = new Audio(path);
+      }
+      const audio = audioRefs.current[taskId];
+      audio.src = path;
+
+      let beepsLeft = roundNumber;
+
+      const playNextBeep = () => {
+        if (!isControllerActive(taskId, controller)) return;
+
+        if (beepsLeft <= 0) {
+          const timeoutId = window.setTimeout(() => {
+            if (!isControllerActive(taskId, controller)) return;
+            playRound(taskId, path, roundNumber + 1, controller);
+          }, PAUSE_BETWEEN_ROUNDS_MS);
+          timeoutRefs.current[taskId] = timeoutId;
+          return;
+        }
+
+        beepsLeft -= 1;
+        audio.currentTime = 0;
+        audio.play().catch((err) => {
+          console.error("No se pudo reproducir la alarma:", err);
+          if (!isControllerActive(taskId, controller)) return;
+          playNextBeep();
+        });
+      };
+
+      audio.onended = playNextBeep;
+      playNextBeep();
+    },
+    [isControllerActive],
+  );
 
   const playAlarmFor = useCallback(
     (task: Task) => {
@@ -98,12 +109,12 @@ export function useTasks() {
     [playRound],
   );
 
-  // Solo las tareas de tipo "alarm" disparan sonido; las notas nunca entran acá.
+  // Las tareas "alarm" y "recurring" disparan sonido; las notas nunca entran acá.
   useEffect(() => {
     setTasks((prev) => {
       let changed = false;
       const updated = prev.map((t) => {
-        if (t.type !== "alarm" || t.stopped) return t;
+        if (t.type === "note" || t.stopped) return t;
         const triggerTime = new Date(t.triggerAt).getTime();
         if (!t.isRinging && triggerTime <= now) {
           changed = true;
@@ -142,7 +153,19 @@ export function useTasks() {
   const stopTask = useCallback(
     (id: string) => {
       stopAudioFor(id);
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, stopped: true, isRinging: false } : t)));
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== id) return t;
+
+          // Las recurrentes se reprograman solas para su próxima ocurrencia
+          if (t.type === "recurring" && t.daysOfWeek && t.time) {
+            const nextTrigger = computeNextRecurringTrigger(t.daysOfWeek, t.time, dayjs());
+            return { ...t, triggerAt: nextTrigger, isRinging: false, stopped: false };
+          }
+
+          return { ...t, stopped: true, isRinging: false };
+        }),
+      );
     },
     [stopAudioFor],
   );
@@ -162,7 +185,6 @@ export function useTasks() {
     [stopAudioFor],
   );
 
-  // Solo aplica a notas: alterna el checkbox de completada.
   const toggleComplete = useCallback((id: string) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
   }, []);
@@ -173,6 +195,41 @@ export function useTasks() {
 
   const unhideTask = useCallback((id: string) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, hidden: false } : t)));
+  }, []);
+
+  /** Reordena las notas moviendo "draggedId" a la posición de "targetId". No afecta alarmas ni repetibles. */
+  const reorderNotes = useCallback((draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+
+    setTasks((prev) => {
+      const notes = prev
+        .filter((t) => t.type === "note")
+        .sort((a, b) => (a.order ?? new Date(a.createdAt).getTime()) - (b.order ?? new Date(b.createdAt).getTime()));
+      const others = prev.filter((t) => t.type !== "note");
+
+      const draggedIdx = notes.findIndex((n) => n.id === draggedId);
+      const targetIdx = notes.findIndex((n) => n.id === targetId);
+      if (draggedIdx === -1 || targetIdx === -1) return prev;
+
+      const reordered = [...notes];
+      const [moved] = reordered.splice(draggedIdx, 1);
+      reordered.splice(targetIdx, 0, moved);
+
+      const withOrder = reordered.map((n, idx) => ({ ...n, order: idx }));
+
+      // Mantenemos el orden relativo original de "others" (alarmas/repetibles) intercalado como estaba
+      const result: Task[] = [];
+      let noteCursor = 0;
+      for (const t of prev) {
+        if (t.type === "note") {
+          result.push(withOrder[noteCursor]);
+          noteCursor += 1;
+        } else {
+          result.push(t);
+        }
+      }
+      return result;
+    });
   }, []);
 
   const visibleTasks = tasks.filter((t) => !t.hidden);
@@ -191,5 +248,6 @@ export function useTasks() {
     toggleComplete,
     hideTask,
     unhideTask,
+    reorderNotes,
   };
 }

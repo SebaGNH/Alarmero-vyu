@@ -10,7 +10,7 @@ import TaskList from "./components/TaskList";
 import type { Task } from "./types";
 
 export default function App() {
-  const { visibleTasks, now, addTask, updateTask, removeTask, stopTask, snoozeTask, toggleComplete } = useTasks();
+  const { visibleTasks, now, addTask, updateTask, removeTask, stopTask, snoozeTask, toggleComplete, reorderNotes } = useTasks();
   useAlarmTitle(visibleTasks, now);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -53,6 +53,7 @@ export default function App() {
           onDelete={removeTask}
           onEdit={handleOpenEdit}
           onToggleComplete={toggleComplete}
+          onReorderNotes={reorderNotes}
         />
       </Container>
 

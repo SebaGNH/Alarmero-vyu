@@ -2,21 +2,19 @@
 
 
 
-la alarma también debe tener la opción para editar
 
 Orden de los elementos, titulo, iconos y abajo la descripción
 
-cuando sea tarea que los botones de fecha que den desabilitados
+avisar 5 minutos antes
+
+
+que las tareas se puedan arrastrar
 
 
 
+en la pestaña de alarma la vamos a cambiar a
 
 
-
-
-
-
-
-
+la pestaña de "Nueva Alarma" la vamos a cambiar "Alarma"
 
 

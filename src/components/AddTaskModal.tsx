@@ -10,6 +10,8 @@ import {
   Stack,
   IconButton,
   Chip,
+  Box,
+  Typography,
   ToggleButtonGroup,
   ToggleButton,
 } from "@mui/material";
@@ -18,13 +20,13 @@ import SaveIcon from "@mui/icons-material/Save";
 import dayjs, { Dayjs } from "dayjs";
 import type { Task, TaskType } from "../types";
 import { DEFAULT_RINGTONE_PATH } from "../constants";
+import { computeNextRecurringTrigger, DAYS_OF_WEEK } from "../utils/recurrence";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSave: (task: Task) => void;
   onUpdate: (task: Task) => void;
-  /** Si viene con valor, el modal entra en modo edición precargando estos datos */
   editingTask?: Task | null;
 }
 
@@ -43,24 +45,26 @@ export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingT
   const [date, setDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [time, setTime] = useState(defaultTriggerTime().format("HH:mm"));
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const timeInputRef = useRef<HTMLInputElement>(null);
 
   const isEditing = Boolean(editingTask);
+  const isNote = type === "note";
+  const isRecurring = type === "recurring";
 
   useEffect(() => {
     if (!open) return;
 
     if (editingTask) {
-      // Modo edición: precargamos todo desde la tarea existente
       const trigger = dayjs(editingTask.triggerAt);
       setType(editingTask.type);
       setTitle(editingTask.title);
       setDescription(editingTask.description);
       setDate(trigger.format("YYYY-MM-DD"));
-      setTime(trigger.format("HH:mm"));
+      setTime(editingTask.type === "recurring" ? editingTask.time || trigger.format("HH:mm") : trigger.format("HH:mm"));
       setSelectedPreset(null);
+      setSelectedDays(editingTask.daysOfWeek || []);
     } else {
-      // Modo creación: valores por defecto
       const def = defaultTriggerTime();
       setType("alarm");
       setTitle("");
@@ -68,6 +72,7 @@ export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingT
       setDate(def.format("YYYY-MM-DD"));
       setTime(def.format("HH:mm"));
       setSelectedPreset(null);
+      setSelectedDays([]);
     }
   }, [open, editingTask]);
 
@@ -88,11 +93,26 @@ export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingT
     }
   };
 
+  const toggleDay = (value: number) => {
+    setSelectedDays((prev) => (prev.includes(value) ? prev.filter((d) => d !== value) : [...prev, value]));
+  };
+
+  const toggleAllDays = () => {
+    setSelectedDays((prev) => (prev.length === 7 ? [] : DAYS_OF_WEEK.map((d) => d.value)));
+  };
+
   const handleSave = () => {
     if (!title.trim()) return;
+    if (isRecurring && selectedDays.length === 0) return;
 
-    // Para notas, el tiempo no tiene efecto real: usamos el momento actual como referencia.
-    const triggerAt = type === "note" ? new Date().toISOString() : dayjs(`${date}T${time}`).toISOString();
+    let triggerAt: string;
+    if (isNote) {
+      triggerAt = new Date().toISOString();
+    } else if (isRecurring) {
+      triggerAt = computeNextRecurringTrigger(selectedDays, time, dayjs());
+    } else {
+      triggerAt = dayjs(`${date}T${time}`).toISOString();
+    }
 
     if (isEditing && editingTask) {
       const updated: Task = {
@@ -101,6 +121,8 @@ export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingT
         title: title.trim(),
         description: description.trim(),
         triggerAt,
+        daysOfWeek: isRecurring ? selectedDays : undefined,
+        time: isRecurring ? time : undefined,
       };
       onUpdate(updated);
     } else {
@@ -116,6 +138,8 @@ export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingT
         hidden: false,
         completed: false,
         createdAt: new Date().toISOString(),
+        daysOfWeek: isRecurring ? selectedDays : undefined,
+        time: isRecurring ? time : undefined,
       };
       onSave(task);
     }
@@ -135,17 +159,18 @@ export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingT
     },
   };
 
-  const isNote = type === "note";
+  const saveDisabled = !title.trim() || (isRecurring && selectedDays.length === 0);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-        <ToggleButtonGroup value={type} exclusive onChange={handleTypeChange} size="small" disabled={isEditing}>
-          <ToggleButton value="alarm">Nueva alarma</ToggleButton>
+        <ToggleButtonGroup value={type} exclusive onChange={handleTypeChange} size="small">
+          <ToggleButton value="alarm">Alarma</ToggleButton>
+          <ToggleButton value="recurring">Repetibles</ToggleButton>
           <ToggleButton value="note">Tareas</ToggleButton>
         </ToggleButtonGroup>
 
-        {!isNote && (
+        {type === "alarm" && (
           <Stack direction="row" spacing={0.75} sx={{ flex: 1, justifyContent: "flex-end" }}>
             {QUICK_PRESETS.map((minutes) => (
               <Chip
@@ -189,25 +214,55 @@ export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingT
           />
 
           {!isNote && (
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="Fecha"
-                type="date"
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value);
-                  setSelectedPreset(null);
-                }}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                sx={{
-                  ...inputBgSx,
-                  "& input::-webkit-calendar-picker-indicator": {
-                    filter: "invert(1) brightness(1.5)",
-                    cursor: "pointer",
-                  },
-                }}
-              />
+            <Stack direction="row" spacing={2} alignItems="flex-start">
+              {isRecurring ? (
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Días de repetición
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} sx={{ mt: 0.75, flexWrap: "wrap", rowGap: 0.75 }}>
+                    {DAYS_OF_WEEK.map((d, idx) => (
+                      <Chip
+                        key={`${d.value}-${idx}`}
+                        label={d.label}
+                        clickable
+                        color={selectedDays.includes(d.value) ? "primary" : "default"}
+                        variant={selectedDays.includes(d.value) ? "filled" : "outlined"}
+                        onClick={() => toggleDay(d.value)}
+                        sx={{ minWidth: 40, fontWeight: 600 }}
+                      />
+                    ))}
+                    <Chip
+                      label="Todos"
+                      clickable
+                      color={selectedDays.length === 7 ? "primary" : "default"}
+                      variant={selectedDays.length === 7 ? "filled" : "outlined"}
+                      onClick={toggleAllDays}
+                    />
+                  </Stack>
+                </Box>
+              ) : (
+                <TextField
+                  label="Fecha"
+                  type="date"
+                  value={date}
+                  onChange={(e) => {
+                    setDate(e.target.value);
+                    setSelectedPreset(null);
+                  }}
+                  sx={{
+                    ...inputBgSx,
+                    flex: 1,
+                    minWidth: 0,
+                    "& input::-webkit-calendar-picker-indicator": {
+                      filter: "invert(1) brightness(1.5)",
+                      cursor: "pointer",
+                    },
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                />
+              )}
+
               <TextField
                 label="Hora"
                 type="time"
@@ -218,23 +273,24 @@ export default function AddTaskModal({ open, onClose, onSave, onUpdate, editingT
                 }}
                 onClick={selectMinutesSegment}
                 onFocus={selectMinutesSegment}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                inputRef={timeInputRef}
                 sx={{
                   ...inputBgSx,
+                  flex: isRecurring ? "0 0 160px" : 1,
+                  minWidth: 0,
                   "& input::-webkit-calendar-picker-indicator": {
                     filter: "invert(1) brightness(1.5)",
                     cursor: "pointer",
                   },
                 }}
+                InputLabelProps={{ shrink: true }}
+                inputRef={timeInputRef}
               />
             </Stack>
           )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button variant="contained" onClick={handleSave} disabled={!title.trim()} startIcon={<SaveIcon />}>
+        <Button variant="contained" onClick={handleSave} disabled={saveDisabled} startIcon={<SaveIcon />}>
           Guardar
         </Button>
       </DialogActions>
