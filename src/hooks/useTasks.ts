@@ -22,8 +22,18 @@ export function useTasks() {
   const controllersRef = useRef<Record<string, RingController>>({});
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
+    const worker = new Worker(new URL("../workers/timerWorker.ts", import.meta.url), { type: "module" });
+
+    worker.onmessage = (e: MessageEvent<number>) => {
+      setNow(e.data);
+    };
+
+    worker.postMessage("start");
+
+    return () => {
+      worker.postMessage("stop");
+      worker.terminate();
+    };
   }, []);
 
   useEffect(() => {
@@ -205,7 +215,6 @@ export function useTasks() {
       const notes = prev
         .filter((t) => t.type === "note")
         .sort((a, b) => (a.order ?? new Date(a.createdAt).getTime()) - (b.order ?? new Date(b.createdAt).getTime()));
-      const others = prev.filter((t) => t.type !== "note");
 
       const draggedIdx = notes.findIndex((n) => n.id === draggedId);
       const targetIdx = notes.findIndex((n) => n.id === targetId);
