@@ -1,0 +1,1 @@
+(function(){"use strict";let e;self.onmessage=t=>{if(t.data==="start"){if(e!==void 0)return;e=self.setInterval(()=>{self.postMessage(Date.now())},1e3)}else t.data==="stop"&&e!==void 0&&(self.clearInterval(e),e=void 0)}})();
