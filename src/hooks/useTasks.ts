@@ -61,6 +61,45 @@ export function useTasks() {
     }
   }, []);
 
+  const getOrCreateAudio = useCallback((taskId: string, path: string): HTMLAudioElement => {
+    if (!audioRefs.current[taskId]) {
+      audioRefs.current[taskId] = new Audio(path);
+    }
+    return audioRefs.current[taskId];
+  }, []);
+
+  /**
+   * Chrome (y derivados) solo permite disparar un <audio> por código si ese mismo elemento
+   * ya sonó una vez dentro de un gesto real del usuario (click, tap, etc). Como las alarmas
+   * suelen dispararse con la pestaña en segundo plano -sin gesto-, si no "calentamos" el audio
+   * antes, el play() se rechaza en silencio y la tarea queda marcada como isRinging sin sonar.
+   * Por eso llamamos a esto siempre que haya un click real disponible (guardar tarea, primer
+   * click en la app, etc), nunca desde el timer.
+   */
+  const primeAudio = useCallback(
+    (taskId: string, ringtonePath: string) => {
+      const path = resolveSoundPath(ringtonePath || DEFAULT_RINGTONE_PATH);
+      const audio = getOrCreateAudio(taskId, path);
+      if (audio.src !== path) audio.src = path;
+
+      const prevMuted = audio.muted;
+      audio.muted = true;
+      audio
+        .play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.muted = prevMuted;
+        })
+        .catch(() => {
+          // Si esto falla es porque el gesto no fue "suficiente" para el navegador,
+          // igual dejamos el elemento creado para el próximo intento.
+          audio.muted = prevMuted;
+        });
+    },
+    [getOrCreateAudio],
+  );
+
   const isControllerActive = useCallback((taskId: string, controller: RingController) => {
     return !controller.cancelled && controllersRef.current[taskId] === controller;
   }, []);
@@ -69,10 +108,7 @@ export function useTasks() {
     (taskId: string, path: string, roundNumber: number, controller: RingController) => {
       if (!isControllerActive(taskId, controller)) return;
 
-      if (!audioRefs.current[taskId]) {
-        audioRefs.current[taskId] = new Audio(path);
-      }
-      const audio = audioRefs.current[taskId];
+      const audio = getOrCreateAudio(taskId, path);
       audio.src = path;
 
       let beepsLeft = roundNumber;
@@ -92,7 +128,7 @@ export function useTasks() {
         beepsLeft -= 1;
         audio.currentTime = 0;
         audio.play().catch((err) => {
-          console.error("No se pudo reproducir la alarma:", err);
+          console.error("[useTasks] No se pudo reproducir la alarma:", err);
           if (!isControllerActive(taskId, controller)) return;
           playNextBeep();
         });
@@ -101,7 +137,7 @@ export function useTasks() {
       audio.onended = playNextBeep;
       playNextBeep();
     },
-    [isControllerActive],
+    [isControllerActive, getOrCreateAudio],
   );
 
   const playAlarmFor = useCallback(
@@ -112,7 +148,10 @@ export function useTasks() {
 
       playRound(task.id, path, 1, controller);
 
-      if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+      // La notificación del sistema no depende de la política de autoplay del audio,
+      // así que la disparamos siempre como respaldo, esté o no la pestaña en foco.
+      // Muchos sistemas operativos reproducen un sonido propio junto con la notificación.
+      if ("Notification" in window && Notification.permission === "granted") {
         new Notification("⏰ Alarmero", { body: task.title || "Tenés una tarea pendiente" });
       }
     },
@@ -144,13 +183,45 @@ export function useTasks() {
     }
   }, []);
 
-  const addTask = useCallback((task: Task) => {
-    setTasks((prev) => [...prev, task]);
+  // Al primer gesto real del usuario en la app, calentamos el audio de todas las alarmas
+  // y recurrentes pendientes. Esto cubre el caso de tareas que ya estaban guardadas de una
+  // sesión anterior y todavía no tuvieron un click propio (ej: recargaste la página).
+  useEffect(() => {
+    const unlockPending = () => {
+      setTasks((current) => {
+        current.filter((t) => t.type !== "note" && !t.stopped).forEach((t) => primeAudio(t.id, t.ringtonePath));
+        return current;
+      });
+      window.removeEventListener("pointerdown", unlockPending);
+      window.removeEventListener("keydown", unlockPending);
+    };
+
+    window.addEventListener("pointerdown", unlockPending, { once: true });
+    window.addEventListener("keydown", unlockPending, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockPending);
+      window.removeEventListener("keydown", unlockPending);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const updateTask = useCallback((updated: Task) => {
-    setTasks((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
-  }, []);
+  const addTask = useCallback(
+    (task: Task) => {
+      setTasks((prev) => [...prev, task]);
+      // El click en "Guardar" es un gesto real: aprovechamos para desbloquear este audio.
+      if (task.type !== "note") primeAudio(task.id, task.ringtonePath);
+    },
+    [primeAudio],
+  );
+
+  const updateTask = useCallback(
+    (updated: Task) => {
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
+      if (updated.type !== "note") primeAudio(updated.id, updated.ringtonePath);
+    },
+    [primeAudio],
+  );
 
   const removeTask = useCallback(
     (id: string) => {
