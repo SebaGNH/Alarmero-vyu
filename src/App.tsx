@@ -1,16 +1,17 @@
 // R > src/App.tsx
-import { useState } from "react";
-import { Container, Box, Typography, Button, Stack } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import { Alert, Box, Button, Container, Stack, Typography } from "@mui/material";
 import dayjs from "dayjs";
-import { useTasks } from "./hooks/useTasks";
-import { useAlarmTitle } from "./hooks/useDocumentTitle";
+import { useState } from "react";
 import AddTaskModal from "./components/AddTaskModal";
 import TaskList from "./components/TaskList";
+import { useAlarmTitle } from "./hooks/useAlarmTitle";
+import { useTasks } from "./hooks/useTasks";
 import type { Task } from "./types";
 
 export default function App() {
-  const { visibleTasks, now, addTask, updateTask, removeTask, stopTask, snoozeTask, toggleComplete, reorderNotes } = useTasks();
+  const { visibleTasks, now, addTask, updateTask, removeTask, stopTask, snoozeTask, toggleComplete, reorderNotes, isAudioBlocked, unlockAudio } =
+    useTasks();
   useAlarmTitle(visibleTasks, now);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -44,6 +45,12 @@ export default function App() {
         <Typography variant="body2" color="text.secondary">
           Tus recordatorios, siempre a mano.
         </Typography>
+
+        {isAudioBlocked && (
+          <Alert severity="warning" sx={{ mt: 2 }} action={<Button color="inherit" size="small" onClick={unlockAudio}>Habilitar audio</Button>}>
+            El navegador bloqueó el sonido automático. Hacé click en "Habilitar audio" para que las alarmas suenen en segundo plano.
+          </Alert>
+        )}
 
         <TaskList
           tasks={visibleTasks}

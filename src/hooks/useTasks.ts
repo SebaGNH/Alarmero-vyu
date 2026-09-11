@@ -1,13 +1,14 @@
 // R > src/hooks/useTasks.ts
-import { useCallback, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
-import type { Task } from "../types";
-import { loadTasks, saveTasks } from "../utils/storage";
-import { resolveSoundPath } from "../utils/assetPath";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_RINGTONE_PATH } from "../constants";
+import type { Task } from "../types";
+import { resolveSoundPath } from "../utils/assetPath";
 import { computeNextRecurringTrigger } from "../utils/recurrence";
+import { loadTasks, saveTasks } from "../utils/storage";
 
 const PAUSE_BETWEEN_ROUNDS_MS = 10_000;
+const PLAY_RETRY_MS = 1_500;
 
 interface RingController {
   cancelled: boolean;
@@ -16,6 +17,7 @@ interface RingController {
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>(() => loadTasks());
   const [now, setNow] = useState<number>(Date.now());
+  const [isAudioBlocked, setIsAudioBlocked] = useState(false);
 
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
   const timeoutRefs = useRef<Record<string, number>>({});
@@ -55,7 +57,7 @@ export function useTasks() {
     }
 
     const timeoutId = timeoutRefs.current[taskId];
-    if (timeoutId) {
+    if (timeoutId !== undefined) {
       window.clearTimeout(timeoutId);
       delete timeoutRefs.current[taskId];
     }
@@ -63,9 +65,32 @@ export function useTasks() {
 
   const getOrCreateAudio = useCallback((taskId: string, path: string): HTMLAudioElement => {
     if (!audioRefs.current[taskId]) {
-      audioRefs.current[taskId] = new Audio(path);
+      const audio = new Audio(path);
+      audio.preload = "auto";
+      audioRefs.current[taskId] = audio;
     }
     return audioRefs.current[taskId];
+  }, []);
+
+  const scheduleNextAttempt = useCallback((taskId: string, callback: () => void, delayMs: number) => {
+    const prevTimeoutId = timeoutRefs.current[taskId];
+    if (prevTimeoutId !== undefined) {
+      window.clearTimeout(prevTimeoutId);
+    }
+    timeoutRefs.current[taskId] = window.setTimeout(() => {
+      delete timeoutRefs.current[taskId];
+      callback();
+    }, delayMs);
+  }, []);
+
+  const isAutoplayBlockedError = useCallback((err: unknown) => {
+    if (err instanceof DOMException) {
+      return err.name === "NotAllowedError";
+    }
+    if (typeof err === "object" && err !== null && "name" in err) {
+      return (err as { name?: string }).name === "NotAllowedError";
+    }
+    return false;
   }, []);
 
   /**
@@ -90,6 +115,7 @@ export function useTasks() {
           audio.pause();
           audio.currentTime = 0;
           audio.muted = prevMuted;
+          setIsAudioBlocked(false);
         })
         .catch(() => {
           // Si esto falla es porque el gesto no fue "suficiente" para el navegador,
@@ -110,6 +136,7 @@ export function useTasks() {
 
       const audio = getOrCreateAudio(taskId, path);
       audio.src = path;
+      audio.load();
 
       let beepsLeft = roundNumber;
 
@@ -117,27 +144,51 @@ export function useTasks() {
         if (!isControllerActive(taskId, controller)) return;
 
         if (beepsLeft <= 0) {
-          const timeoutId = window.setTimeout(() => {
-            if (!isControllerActive(taskId, controller)) return;
-            playRound(taskId, path, roundNumber + 1, controller);
-          }, PAUSE_BETWEEN_ROUNDS_MS);
-          timeoutRefs.current[taskId] = timeoutId;
+          scheduleNextAttempt(
+            taskId,
+            () => {
+              if (!isControllerActive(taskId, controller)) return;
+              playRound(taskId, path, roundNumber + 1, controller);
+            },
+            PAUSE_BETWEEN_ROUNDS_MS,
+          );
           return;
         }
 
-        beepsLeft -= 1;
         audio.currentTime = 0;
-        audio.play().catch((err) => {
-          console.error("[useTasks] No se pudo reproducir la alarma:", err);
-          if (!isControllerActive(taskId, controller)) return;
-          playNextBeep();
-        });
+        audio
+          .play()
+          .then(() => {
+            // Solo descontamos cuando el beep realmente empezó.
+            beepsLeft -= 1;
+            setIsAudioBlocked(false);
+          })
+          .catch((err) => {
+            console.error("[useTasks] No se pudo reproducir la alarma:", err);
+            if (!isControllerActive(taskId, controller)) return;
+            if (isAutoplayBlockedError(err)) {
+              setIsAudioBlocked(true);
+            }
+            // Reintento controlado: evita loops recursivos y mejora fiabilidad en segundo plano.
+            scheduleNextAttempt(taskId, playNextBeep, PLAY_RETRY_MS);
+          });
       };
 
       audio.onended = playNextBeep;
       playNextBeep();
     },
-    [isControllerActive, getOrCreateAudio],
+    [isControllerActive, getOrCreateAudio, isAutoplayBlockedError, scheduleNextAttempt],
+  );
+
+  const ensureAudioPreloaded = useCallback(
+    (taskId: string, ringtonePath: string) => {
+      const path = resolveSoundPath(ringtonePath || DEFAULT_RINGTONE_PATH);
+      const audio = getOrCreateAudio(taskId, path);
+      if (audio.src !== path) audio.src = path;
+      audio.preload = "auto";
+      audio.load();
+    },
+    [getOrCreateAudio],
   );
 
   const playAlarmFor = useCallback(
@@ -177,21 +228,24 @@ export function useTasks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [now]);
 
-  useEffect(() => {
+  const unlockAudio = useCallback(() => {
+    setTasks((current) => {
+      current.filter((t) => t.type !== "note" && !t.stopped).forEach((t) => primeAudio(t.id, t.ringtonePath));
+      return current;
+    });
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
-  }, []);
+    setIsAudioBlocked(false);
+  }, [primeAudio]);
 
   // Al primer gesto real del usuario en la app, calentamos el audio de todas las alarmas
   // y recurrentes pendientes. Esto cubre el caso de tareas que ya estaban guardadas de una
   // sesión anterior y todavía no tuvieron un click propio (ej: recargaste la página).
   useEffect(() => {
     const unlockPending = () => {
-      setTasks((current) => {
-        current.filter((t) => t.type !== "note" && !t.stopped).forEach((t) => primeAudio(t.id, t.ringtonePath));
-        return current;
-      });
+      unlockAudio();
+
       window.removeEventListener("pointerdown", unlockPending);
       window.removeEventListener("keydown", unlockPending);
     };
@@ -203,8 +257,12 @@ export function useTasks() {
       window.removeEventListener("pointerdown", unlockPending);
       window.removeEventListener("keydown", unlockPending);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [unlockAudio]);
+
+  // Precarga los audios para minimizar retrasos/fallos de carga al disparar en segundo plano.
+  useEffect(() => {
+    tasks.filter((t) => t.type !== "note" && !t.stopped).forEach((t) => ensureAudioPreloaded(t.id, t.ringtonePath));
+  }, [tasks, ensureAudioPreloaded]);
 
   const addTask = useCallback(
     (task: Task) => {
@@ -319,6 +377,7 @@ export function useTasks() {
     tasks,
     visibleTasks,
     hiddenTasks,
+    isAudioBlocked,
     now,
     addTask,
     updateTask,
@@ -329,5 +388,6 @@ export function useTasks() {
     hideTask,
     unhideTask,
     reorderNotes,
+    unlockAudio,
   };
 }
